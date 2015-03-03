@@ -17,6 +17,16 @@ redmine:
     url: "https://redmine"
 
     #
+    # CA cert file to use for SSL verification.
+    #
+    #ssl_ca: "/etc/ssl/ca-cert"
+
+    #
+    # Whether to impersonate a redmine user.
+    #
+    impersonate: true
+
+    #
     # Merge Request: global open hooks
     open:
         #

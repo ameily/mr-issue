@@ -15,12 +15,28 @@ function normalizeProjectConfig(name, cfg, globals) {
     var merge = _.defaults(cfg.merge || {}, globals.merge || {}, HookDefaults);
 
     var obj = {
+        name: name,
         open: open,
         merge: merge,
         close: close
     };
 
     return obj;
+}
+
+function getBool(val) {
+    if(_.isUndefined(val)) {
+        return false;
+    } else if(_.isString(val)) {
+        return _.indexOf(
+            ['y', 'yes', 't', 'true', '1', 'on'],
+            val.toLowerCase()
+        ) >= 0;
+    } else if(_.isNumber(val)) {
+        return val > 0;
+    }
+
+    return false;
 }
 
 
@@ -31,6 +47,8 @@ function loadConfig(path) {
         redmine: data.redmine,
         projects: []
     };
+
+    config.redmine.impersonate = getBool(config.redmine.impersonate);
 
     _.each(data.projects, function(name) {
         var projData = data[name];
