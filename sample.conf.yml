@@ -1,0 +1,51 @@
+#
+# rename to config.yml
+#
+
+
+#
+# Configuration for Redmine
+#
+redmine:
+    #
+    # API key
+    apiKey: ""
+
+    #
+    # URL
+    #
+    url: "https://redmine"
+
+    #
+    # Merge Request: global open hooks
+    open:
+        #
+        # Change issue status 
+        #
+        status: "feedback"
+
+    #
+    # Merge Request: global merge hooks
+    #
+    merge:
+        #
+        # Change issue status
+        #
+        status: "closed"
+
+
+#
+# Project Configuration
+#
+mr_project:
+    open:
+        #
+        # Change the issue assignee
+        #
+        assignee: user
+
+
+projects:
+    - mr_project
+
+

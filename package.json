@@ -1,0 +1,23 @@
+{
+  "name": "mr-issue",
+  "version": "1.0.0",
+  "description": "Gitlab Merge Request to Redmine Issue Hooks",
+  "main": "mr-issue.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ameily/mr-issue"
+  },
+  "author": "Adam Meily",
+  "license": "BSD",
+  "bugs": {
+    "url": "https://github.com/ameily/mr-issue/issues"
+  },
+  "homepage": "https://github.com/ameily/mr-issue",
+  "dependencies": {
+    "underscore": "^1.8.2",
+    "yamljs": "^0.2.1"
+  }
+}
