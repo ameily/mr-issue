@@ -18,8 +18,10 @@
   "homepage": "https://github.com/ameily/mr-issue",
   "dependencies": {
     "async": "^0.9.0",
+    "moment": "^2.10.3",
     "request": "^2.53.0",
     "underscore": "^1.8.2",
+    "winston": "^1.0.0",
     "yamljs": "^0.2.1"
   }
 }
