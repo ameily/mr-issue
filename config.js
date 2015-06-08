@@ -1,66 +1,88 @@
 
 var yaml = require('yamljs');
 var _ = require('underscore');
-
-
-var HookDefaults = {
-    assignee: null,
-    status: null,
-};
-
-
-function normalizeProjectConfig(name, cfg, globals) {
-    var open = _.defaults(cfg.open || {}, globals.open || {}, HookDefaults);
-    var close = _.defaults(cfg.close || {}, globals.close || {}, HookDefaults);
-    var merge = _.defaults(cfg.merge || {}, globals.merge || {}, HookDefaults);
-
-    var obj = {
-        name: name,
-        open: open,
-        merge: merge,
-        close: close
-    };
-
-    return obj;
-}
+var util = require('util');
 
 function getBool(val) {
-    if(_.isUndefined(val)) {
-        return false;
-    } else if(_.isString(val)) {
-        return _.indexOf(
-            ['y', 'yes', 't', 'true', '1', 'on'],
-            val.toLowerCase()
-        ) >= 0;
-    } else if(_.isNumber(val)) {
-        return val > 0;
+  if(!_.isString(val)) {
+    return val;
+  }
+
+  var t = val.toLowerCase();
+  return ['t', 'true', 'y', 'yes', 'on', '1'].indexOf(t) >= 0;
+}
+
+function MrIssueConfig() {
+  var data = yaml.load("./config.yml");
+  var self = this;
+
+  this.redmine = data.redmine;
+  this.redmine.impersonate = getBool(data.redmine.impersonate);
+  this.projects = [];
+
+  var globalActions = data.redmine.actions || {};
+
+  _.each(data.projects, function(name) {
+    var project = data[name];
+
+    project.name = name;
+
+    for(var actionName in globalActions) {
+      project.actions[actionName] = _.defaults({}, project.actions[actionName], globalActions[actionName]);
     }
 
-    return false;
+    /*
+    for(var actionName in projData.actions) {
+      console.log("Globals: " + util.inspect(globalActions[actionName]));
+      projData.actions[actionName] = _.defaults({}, projData.actions[actionName], globalActions[actionName]);
+    }
+    */
+
+    self.projects.push(project);
+  });
 }
 
+MrIssueConfig.prototype.getUserLookups = function() {
+  var lookups = [];
 
-function loadConfig(path) {
-    var data = yaml.load(path);
+  _.each(this.projects, function(project) {
+    //_.each(project.actions, function(actionName) {
+    for(var actionName in project.actions) {
+      var actions = project.actions[actionName];
+      if(actions.assignee) {
+        console.log("Lookup: " + actions.assignee);
+        lookups.push(actions.assignee);
+      }
+    }
+  });
 
-    var config = {
-        redmine: data.redmine,
-        projects: []
-    };
+  return _.uniq(lookups);
+};
 
-    config.redmine.impersonate = getBool(config.redmine.impersonate);
+MrIssueConfig.prototype.getIssueStatusLookups = function() {
+  var lookups = [];
 
-    _.each(data.projects, function(name) {
-        var projData = data[name];
-        config.projects.push(normalizeProjectConfig(name, projData, data.redmine));
-    });
+  _.each(this.projects, function(project) {
+    for(var actionName in project.actions) {
+      var actions = project.actions[actionName];
+      if(actions.status) {
+        lookups.push(actions.status);
+      }
+    }
+  });
 
-    return config;
+  return _.uniq(lookups);
 }
 
+MrIssueConfig.prototype.getProjectConfig = function(url) {
+  var name = url.substring(1);
+  for(var i in this.projects) {
+    var proj = this.projects[i];
+    if(proj.name == name) {
+      return proj;
+    }
+  }
+  return null;
+};
 
-module.exports = loadConfig;
-
-
-
-
+module.exports = MrIssueConfig;
