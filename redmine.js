@@ -5,16 +5,17 @@ var fs = require('fs');
 var util = require('util');
 var url = require('url');
 var async = require('async');
+var _ = require('underscore');
 
 
-function Redmine(config) {
-  this.config = config;
+function Redmine(config, cb) {
+  this.config = config.redmine;
   //this.statuses = null;
   //this.users = {};
   //this.mergeRequestField = null;
   this.request = null;
 
-  if(config.ssl_ca) {
+  if(this.config.ssl_ca) {
     this.request = request.defaults({
       agentOptions: {
         ca: fs.readFileSync(this.config.ssl_ca)
@@ -26,17 +27,62 @@ function Redmine(config) {
       json: true
     });
   }
+
+  this.users = {};
+  this.issueStatuses = {};
+  this.mergeRequestField = null;
+
+  _.bindAll(this,
+    "init", "getUser", "getIssueStatusDescriptor", "queryUser", "checkResponse",
+    "queryMergeRequestField", "queryIssueStatusDescriptors", "queryIssue",
+    "updateIssue"
+  );
+
+  this.init(config, cb);
 };
 
-Redmine.prototype.init = function(cb) {
+
+Redmine.prototype.init = function(config, callback) {
   var self = this;
-  this.clearCache();
+
+  var userLookup = config.getUserLookups();
+  var statusLookup = config.getIssueStatusLookups();
+
+  console.log("Statuses: " + util.inspect(statusLookup));
+  console.log("Users: " + util.inspect(userLookup));
 
   async.series([
-    this.getMergeRequestField,
-    this.getIssueStatusDescriptors
-  ], cb);
+    self.queryMergeRequestField,
+    self.queryIssueStatusDescriptors,
+    function(cb) {
+      async.eachSeries(userLookup, self.queryUser, cb);
+    },
+    function(cb) {
+      for(var i in statusLookup) {
+        var name = statusLookup[i];
+        var status = self.getIssueStatusDescriptor(name);
+        if(!status) {
+          cb("Issue status not found: " + name);
+          return;
+        } else {
+          console.log("Found status: " + name + " => " + status.id);
+        }
+      }
+
+      cb(null);
+    }
+  ], callback);
 };
+
+Redmine.prototype.getUser = function(name) {
+  return this.users[name];
+};
+
+Redmine.prototype.getIssueStatusDescriptor = function(name) {
+  var key = name.toLowerCase();
+  return this.issueStatuses[key];
+};
+
 
 ///
 /// Check a Redmine response and properly perform an error callback if the
@@ -54,51 +100,79 @@ Redmine.prototype.checkResponse = function(err, res, cb) {
   }
 };
 
+
 ///
 /// Query Redmine for the Merge Request custom field and cache the result.
 ///
-this.getMergeRequestField = function(cb) {
+Redmine.prototype.queryMergeRequestField = function(cb) {
+  var self = this;
+  console.log("Query Merge request field: " + this.config.apiKey);
+
+  // Query Redmine
+  this.request({
+    url: url.resolve(this.config.url, "/custom_fields.json"),
+    method: "GET",
+    body: {
+      key: this.config.apiKey
+    }
+  }, function(err, res, body) {
+    if(self.checkResponse(err, res, cb)) {
+      // Got a valid response
+      for(var i in body.custom_fields) {
+        var field = body.custom_fields[i];
+        if(field.name.toLowerCase() == "merge request") {
+          // Found the Merge Request custom field
+          console.log(util.format("Merge request field: %s [%d]", field.name, field.id));
+          self.mergeRequestField = field;
+
+          break;
+        }
+      }
+
+      if(!self.mergeRequestField) {
+        console.log("Could not find merge request field");
+      }
+
+      cb(null, self.mergeRequestField);
+    }
+  });
+};
+
+
+///
+/// Query the list of issue statuses.
+///
+/// {
+///   id: 1,
+///   name: "New",
+///   is_closed: false,
+///   is_default: true
+/// }
+///
+Redmine.prototype.queryIssueStatusDescriptors = function(cb) {
   var self = this;
 
-  var ret = function() {
-    // Perform a callback based on the current merge request field.
-    if(self.mergeRequestField) {
-      logger.error("Could not find merge request field");
-      cb(null, self.mergeRequestField);
-    } else {
-      cb("merge request field does not exist");
+  this.request({
+    uri: url.resolve(this.config.url, "/issue_statuses.json"),
+    method: "GET",
+    body: {
+      key: this.config.apiKey
     }
-  };
+  }, function(err, res, body) {
+    if(self.checkResponse(err, res, cb)) {
+      // Got a valid response, populate the status map
+      self.statuses = {};
+      _.each(body.issue_statuses, function(status) {
+        status.key = status.name.toLowerCase();
+        self.issueStatuses[status.key] = status;
+        console.log("Issue Status Descriptor: " + status.name + " [" + status.id.toString() + "]");
+      });
 
-  if(this.mergeRequestField) {
-    ret();
-  } else {
-    var self = this;
-
-    // Query Redmine
-    this.request({
-      url: url.resolve(this.config.url, "/custom_fields.json"),
-      method: "GET",
-      body: {
-        key: this.config.api_key
-      }
-    }, function(err, res, body) {
-      if(self.checkResponse(err, res, cb)) {
-        // Got a valid response
-        for(var i in body.custom_fields) {
-          var field = body.custom_fields[i];
-          if(field.name.toLowerCase() == "merge request") {
-            // Found the Merge Request custom field
-            logger.debug(util.format("Merge request field: %s [%d]", field.name, field.id);
-            self.mergeRequestField = field;
-            break;
-          }
-        }
-        ret();
-      }
-    });
-  }
+      cb(null, self.issueStatuses);
+    }
+  });
 };
+
 
 ///
 /// Query a Redmine user based on user name or email address and cache the
@@ -112,101 +186,41 @@ this.getMergeRequestField = function(cb) {
 ///   password: "secret"
 /// }
 ///
-this.getUser = function(name, cb) {
-  if(name in this.users) {
-    cb(null, this.users[name]);
-  } else {
-    var self = this;
-
-    // Query a specific user
-    this.request({
-      url: url.resolve(this.config.url, "/users.json"),
-      method: "GET",
-      body: {
-        key: this.config.api_key,
-        name: name
-      }
-    }, function(err, res, body) {
-      if(self.checkResponse(err, res, cb)) {
-        // We got a valid response
-        if(body.total_count == 0) {
-          // No user found
-          logger.error("User does not exist: " + name);
-          cb("User does not exist");
-        } else {
-          // User found
-          var user = body.users[0].
-          logger.info(util.format(
-            "Found user: %s => %s %s [%d]", name, user.firstname, user.lastname,
-             user.id
-          ));
-          self.users[name] = user;
-          cb(null, user);
-        }
-      }
-    });
-  }
-};
-
-///
-/// Query the list of issue statuses.
-///
-/// {
-///   id: 1,
-///   name: "New",
-///   is_closed: false,
-///   is_default: true
-/// }
-///
-Redmine.prototype.getIssueStatusDescriptors = function(cb) {
+Redmine.prototype.queryUser = function(name, cb) {
   var self = this;
 
+  // Query a specific user
   this.request({
-    uri: url.resolve(this.config.url, "/issue_statuses.json"),
+    url: url.resolve(this.config.url, "/users.json"),
     method: "GET",
     body: {
-      key: this.config.api_key
+      key: this.config.apiKey,
+      name: name
     }
   }, function(err, res, body) {
-    if(self.checkResponse(err, res, cb)) {
-      // Got a valid response, populate the status map
-      self.statuses = {};
-      _.each(body.issue_statuses, function(status) {
-        status.key = status.name.toLowerCase();
-        self.statuses[status.key] = status;
-      });
+    var user = null;
 
-      cb(null, self.statuses);
+    if(self.checkResponse(err, res, cb)) {
+      // We got a valid response
+      if(body.total_count == 0) {
+        // No user found
+        console.log("User does not exist: " + name);
+        cb("User does not exist: " + name);
+      } else {
+        // User found
+        user = body.users[0]
+        console.log(util.format(
+          "Found user: %s => %s %s [%d]", name, user.firstname, user.lastname,
+           user.id
+        ));
+        self.users[name] = user;
+
+        cb(null, user);
+      }
     }
   });
 };
 
-///
-/// Get the issue status descriptor.
-///
-/// @param name the status name to query
-///
-Redmine.prototype.getIssueStatusDescriptor = function(name, cb) {
-  var key = name.toLowerCase();
-  var self = this;
-
-  var ret = function() {
-    if(key in self.statuses) {
-      cb(null, self.statuses[key]);
-    } else {
-      logger.error("Status does not exist");
-      cb("status does not exist");
-    }
-  };
-
-  if(this.statuses == null) {
-    // Query redmine for the list of statuses
-    this.queryIssueStatuses(ret);
-  } else {
-    // Statuses are already populated
-    ret();
-  }
-};
 
 
 ///
@@ -240,18 +254,19 @@ Redmine.prototype.getIssueStatusDescriptor = function(name, cb) {
 <created_on>Thu Dec 03 15:02:12 +0100 2009</created_on>
 <updated_on>Sun Jan 03 12:08:41 +0100 2010</updated_on>
 */
-Redmine.prototype.getIssue = function(id, cb) {
+Redmine.prototype.queryIssue = function(id, cb) {
   var self = this;
+  console.log("Query Issue: " + id);
 
   this.request({
-    url: url.resolve(this.config.url , "/issue/" + id + ".json"),
+    url: url.resolve(this.config.url , "/issues/" + id + ".json"),
     method: "GET",
     body: {
-      key: this.config.api_key
+      key: this.config.apiKey
     }
   }, function(err, res, body) {
     if(self.checkResponse(err, res, cb)) {
-      cb(null, body);
+      cb(null, body ? body.issue : null );
     }
   });
 };
@@ -264,24 +279,33 @@ Redmine.prototype.getIssue = function(id, cb) {
 /// @param impersonate the user name to impersonate
 ///
 Redmine.prototype.updateIssue = function(id, body, impersonate, cb) {
+  var self = this;
   var req = {
-    url: url.resolve(this.config.url , "/issue/" + id + ".json"),
+    url: url.resolve(this.config.url , "/issues/" + id + ".json"),
     method: "PUT",
-    body: _.defaults({}, body, {key: this.config.api_key})
+    body: {
+      issue: body,
+      key: this.config.apiKey
+    }
   };
 
-  if(impersonate) {
+  if(this.config.impersonate && impersonate) {
     req.headers = {
       "X-Redmine-Switch-User": impersonate
     };
   }
 
   this.request(req, function(err, res, body) {
-    if(this.checkResponse(err, res, cb)) {
-
+    if(self.checkResponse(err, res, cb)) {
+      console.log("Update? " + util.inspect(body));
+      cb(null);
     }
   });
 };
 
 
 module.exports = Redmine;
+
+
+
+////////////////////////////////////////////////////////////////////////////////
