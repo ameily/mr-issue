@@ -1,8 +1,9 @@
 
-var Redming = require('./redmine');
+var Redmine = require('./redmine');
 var _ = require('underscore');
 var async = require('async');
-var logger = require('./logger');
+var util = require('util');
+//var logger = require('./logger');
 
 
 function asyncMapIgnoreErrors(arr, iterator, callback) {
@@ -21,10 +22,15 @@ function asyncMapIgnoreErrors(arr, iterator, callback) {
 ///
 function MrIssueDriver(config, cb) {
   this.config = config;
-  this.redmine = new Redmine(config.redmine);
-  this.closeIssueRegExp = /closes\s+#(\d+)\b/gi;
+  //this.closeIssueRegExp = /closes\s+#(\d+)\b/gi;
+  this.redmine = new Redmine(config, function(err) {
+    if(err) {
+      cb("Failed to initialize Redmine interface: " + err);
+      return;
+    }
 
-  this.redmine.init(cb);
+    cb(null);
+  });
 }
 
 ///
@@ -32,155 +38,118 @@ function MrIssueDriver(config, cb) {
 // callback with the list of Redmine issue descriptors.
 ///
 MrIssueDriver.prototype.parseClosedIssues = function(mergeRequest, cb) {
-  var issues = mergeRequest.description.match(this.closeIssueRegExp);
-  if(!issues || issues.length == 0) {
-    return [];
+  var self = this;
+  //var matches = mergeRequest.description.match(this.closeIssueRegExp);
+  var description = mergeRequest.description;
+  var result;
+  var issueIds = [];
+  var re = /closes\s+#(\d+)\b/gi;
+
+  while((result = re.exec(description)) != null) {
+    issueIds.push(result[1]);
   }
 
-  var issueIds = _.uniq(issues);
+  issueIds = _.uniq(issueIds);
+
+  console.log("Issues: " + util.inspect(issueIds));
+
   if(issueIds.length > 0) {
     // Retrieve the issue bodies from Redmine
-    asyncMapIgnoreErrors(issueIds, this.redmine.getIssue, cb);
+    asyncMapIgnoreErrors(issueIds, self.redmine.queryIssue, cb);
   } else {
     cb(null, []);
   }
 };
 
-///
-/// Retrieve the Mr. Issue project configuration for a specific project.
-///
-MrIssueDriver.prototype.getProjectConfig = function(name) {
-  for(var i in this.config.projects) {
-    var proj = this.config.projects[i];
-    if(proj.name == name) {
-      return proj;
-    }
-  }
-  return null;
-};
 
-///
-/// Based on a Merge Request event, generate the issue update body object to
-/// send to Redmine.
-///
-MrIssueDriver.prototype.getUpdateIssueBody = function(opts, cb) {
-  var proj = this.getProjectConfig(opts.name);
-  if(!proj || !proj[opts.hook]) {
-    cb(null, {});
-  }
-
+MrIssueDriver.prototype.processIssue = function(data, cb) {
+  // The update issue request body
   var body = {};
-  var hooks = proj[opts.hook];
-  async.series({
-    assignee: function(cb) {
-      if(hooks.assignee) {
-        self.redmine.getUser(hooks.assignee, cb);
-      } else {
-        cb(null, null);
-      }
-    },
-    status: function(cb) {
-      if(hooks.status) {
-        self.redmine.getStatus(hooks.status, cb);
-      } else {
-        cb(null, null);
-      }
-    },
-    mergeRequestField: function(cb) {
-      if(opts.hook == 'open') {
-        self.redmine.getMergeRequestField(cb);
-      } else {
-        cb(null, null);
-      }
-    }
-  }, function(err, data) {
-    if(err) {
-      cb(err);
-      return;
-    }
+  var actions = data.project.actions[data.action];
 
-    var body = {};
-    if(data.status) {
-      body.status_id = data.status.id;
-    }
+  if(actions.assignee_id) {
+    body.assigned_to_id = actions.assignee_id;
+  } else if(actions.assignee) {
+    body.assigned_to_id = this.redmine.getUser(actions.assignee).id;
+  }
 
-    if(props.assignee) {
-      body.assigned_to_id = data.assignee.id;
-    }
+  if(actions.status_id) {
+    body.status_id = actions.status_id;
+  } else if(actions.status) {
+    body.status_id = this.redmine.getIssueStatusDescriptor(actions.status).id;
+  }
 
-    if(opts.field) {
-      body.custom_fields = [{
-        id: opts.field.id,
-        value: opts.req.object_attributes.url
-      }];
-    }
+  if(data.action == 'open') {
+    body.custom_fields = [
+      { id: this.redmine.mergeRequestField.id, value: data.mergeRequest.url }
+    ];
+    body.notes = "Merge request submitted.";
+  } else if(data.action == 'merge') {
+    body.notes = "Merge request accepted."
+  }
 
-    cb(null, body);
-  });
+  if(data.project.redmineProjects.indexOf(data.issue.project.id) < 0) {
+    console.log("Error: issue does not belong to project: #" + data.issue.id);
+    return;
+  }
+
+  console.log("Updating issue #" + data.issue.id);
+  console.log(util.inspect(body));
+
+  this.redmine.updateIssue(data.issue.id, body, data.user.username, cb);
 };
+
 
 ///
 /// Handle a Merge Request webhook event.
 ///
-MrIssueDriver.prototype.handleMergeRequestEvent = function(name, req) {
+MrIssueDriver.prototype.handleWebHook = function(name, body) {
   var self = this;
-  var hook;
-  var mergeRequest = req.object_attributes;
+  var action;
+  var mergeRequest = body.object_attributes;
+  var project = this.config.getProjectConfig(name);
+
+  if(!project) {
+    console.log("Unknown project: " + name);
+    return;
+  }
 
   if(mergeRequest.action == 'open') {
-    hook = 'open';
+    action = 'open';
   } else if(mergeRequest.action == 'merge') {
-    hook = 'merge';
+    action = 'merge';
   } else if(mergeRequest.action == 'close') {
-    hook = 'close';
+    action = 'close';
   } else {
+    console.log("Unknown merge request action: " + mergeRequest.action);
     return;
   }
 
   this.parseClosedIssues(mergeRequest, function(err, issues) {
     if(err || issues.length == 0) {
-      logger.info("No closed issues referenced in merge request");
+      console.log("No closed issues referenced in merge request");
       return;
     }
 
-    async.eachSeries(issues, function(issue) {
-      self.updateIssue()
-    });
-  });
-
-  if(issues.length == 0) {
-    return;
-  }
-
-  this.redmine.getMergeRequestField(function(err, field) {
-    if(err) {
-      //TODO
-      return
-    }
-
-    self.getUpdateIssueBody({
-      name: name,
-      hook: hook,
-      field: field,
-      req: req
-    }, function(err, body) {
-      if(err) {
+    async.eachSeries(issues, function(issue, cb) {
+      if(!issue) {
         return;
       }
 
-      var impersonate = null;
-      if(self.config.redmine.impersonate && req.user.username) {
-        impersonate = req.user.username;
-      }
-
-      _.each(issues, function(issue) {
-        self.redmine.updateIssue(issue, body, impersonate, function(err) {
-          //TODO
-        });
-      });
+      console.log("Processing issue: " + issue.id);
+      self.processIssue({
+        project: project,
+        mergeRequest: mergeRequest,
+        user: body.user,
+        issue: issue,
+        action: action
+      }, cb);
     });
   });
 };
 
 
 module.exports = MrIssueDriver;
+
+
+////////////////////////////////////////////////////////////////////////////////
