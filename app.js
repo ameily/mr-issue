@@ -1,43 +1,52 @@
+///
+/// @copyright 2015 Adam Meily <meily.adam@gmail.com>
+///
+
 
 var http = require('http');
 var util = require('util');
 var MrIssueDriver = require('./driver');
-var MrIssueConfig = require('./config');
+var config = require('./config');
+var logger = require('./logger');
 
-var config = new MrIssueConfig();
+
+
 var driver = new MrIssueDriver(config, function(err) {
   if(err) {
-    console.log("Could not initialize Mr. Issue driver: " + err);
+    logger.error("failed to initialize mr-issue: %s", err.message);
     return;
   }
 
   http.createServer(function(req, res) {
-      // req.url == "/endpoint"
+    // req.url == "/endpoint"
 
-      var data = "";
-      req.on('data', function(chunk) {
-          data += chunk;
-      });
+    var data = "";
+    req.on('data', function(chunk) {
+      data += chunk;
+    });
 
-      req.on('end', function() {
-          var body = null;
-          try {
-              body = JSON.parse(data);
-          } catch(e) {
-          }
+    req.on('end', function() {
+      var body;
 
-          if(body) {
+      try {
+        body = JSON.parse(data);
+      } catch(e) {
+        body = null;
+      }
 
-          }
+      if(body) {
+        logger.info(
+          "received webhook request: %s [action: %s]", req.url,
+          body.object_attributes.action
+        );
 
-          console.log(req.url);
-          console.log(util.inspect(body, false, null, true));
-          console.log("\n");
+        driver.handleWebHook(req.url, body);
+      } else {
+        logger.warn("received invalid JSON request: " + req.url);
+      }
 
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end('{"ok": true}');
-
-          driver.handleWebHook(req.url, body);
-      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{"ok": true}');
+    });
   }).listen(8080, "0.0.0.0");
 });
