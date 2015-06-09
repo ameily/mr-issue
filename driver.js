@@ -91,18 +91,50 @@ MrIssueDriver.prototype.processIssue = function(data, cb) {
     body.custom_fields = [
       { id: this.redmine.mergeRequestField.id, value: data.mergeRequest.url }
     ];
-    body.notes = "Merge request submitted.";
-  } else if(data.action == 'merge') {
-    body.notes = "Merge request accepted."
   }
 
-  if(data.project.redmineProjects && data.project.redmineProjects.indexOf(data.issue.project.id) < 0) {
-    logger.error("issue #%s is out of project scope", data.issue.id);
-    cb(null);
-    return;
+  if(data.project.redmineProjects) {
+    var filter = data.project.redmineProjects;
+    if(filter.indexOf(data.issue.project.id) < 0 && filter.indexOf(data.issue.project.name) < 0) {
+      logger.error(
+        "issue #%s is out of project scope: project is %s [%d]", data.issue.id,
+        data.issue.project.name, data.issue.project.id
+      );
+      cb(null);
+      return;
+    }
   }
 
-  this.redmine.updateIssue(data.issue.id, body, data.user.username, cb);
+  if(actions.notes) {
+    body.notes = actions.notes;
+  }
+
+  this.redmine.updateIssue(
+    data.issue.id, body, data.user ? data.user.username : null, cb
+  );
+};
+
+///
+/// Validate the webhook request body
+///
+MrIssueDriver.prototype.validateWebHookBody = function(body) {
+  if(!body) {
+    return "no JSON body found";
+  }
+
+  if(!_.isObject(body)) {
+    return "JSON body is not an object";
+  }
+
+  if(!body.object_attributes) {
+    return "missing object_attributes property";
+  }
+
+  if(body.object_kind != "merge_request") {
+    return "invalid object_kind value: " + body.object_kind;
+  }
+
+  return null;
 };
 
 
@@ -110,13 +142,20 @@ MrIssueDriver.prototype.processIssue = function(data, cb) {
 /// Handle a Merge Request webhook event.
 ///
 MrIssueDriver.prototype.handleWebHook = function(name, body) {
+  var errors = this.validateWebHookBody(body);
+  logger.debug("webhook body: ", body);
+  if(errors) {
+    logger.error("invalid webhook request: %s", errors);
+    return;
+  }
+
   var self = this;
   var action;
   var mergeRequest = body.object_attributes;
   var project = this.config.getProjectConfig(name);
 
   if(!project) {
-    console.log("Unknown project: " + name);
+    logger.warn("unknown project: %s", name);
     return;
   }
 
@@ -127,7 +166,12 @@ MrIssueDriver.prototype.handleWebHook = function(name, body) {
   } else if(mergeRequest.action == 'close') {
     action = 'close';
   } else {
-    console.log("Unknown merge request action: " + mergeRequest.action);
+    logger.warn("unknown merge request action: %s", mergeRequest.action);
+    return;
+  }
+
+  if(_.isEmpty(project.actions[action])) {
+    logger.info("no actions registered for merge request action: %s", action);
     return;
   }
 
@@ -142,7 +186,7 @@ MrIssueDriver.prototype.handleWebHook = function(name, body) {
         return;
       }
 
-      console.log("Processing issue: " + issue.id);
+      logger.info("Processing issue: #" + issue.id);
       self.processIssue({
         project: project,
         mergeRequest: mergeRequest,
