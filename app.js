@@ -35,10 +35,7 @@ var driver = new MrIssueDriver(config, function(err) {
       }
 
       if(body) {
-        logger.info(
-          "received webhook request: %s [action: %s]", req.url,
-          body.object_attributes.action
-        );
+        logger.info("received webhook request: %s", req.url);
 
         driver.handleWebHook(req.url, body);
       } else {
