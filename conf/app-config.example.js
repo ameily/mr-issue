@@ -22,13 +22,12 @@ module.exports = {
     ///
     /// API key
     ///
-    apiKey: "<TODO>",
+    apiKey: "<Insert Redmine API Key Here>",
 
     ///
     /// Whether to impersonate the user performing the GItlab operation or not.
     ///
     impersonate: true,
-
 
     ///
     /// (optional) SSL Certificate Authority file path to use when verifying the
@@ -48,9 +47,14 @@ module.exports = {
     open: {
 
       ///
-      /// Set the status to Feedback
+      /// (optional) Set the status to Feedback
       ///
       status: "feedback",
+
+      ///
+      /// (optional) Post a comment under the issue.
+      ///
+      notes: "Merge Request submitted."
     },
 
     ///
@@ -61,7 +65,12 @@ module.exports = {
       ///
       /// Set the status to Closed
       ///
-      status: "closed"
+      status: "closed",
+
+      ///
+      /// (optional) Post a comment under the issue.
+      ///
+      notes: "Merge Request accepted."
     }
   },
 
@@ -86,6 +95,9 @@ module.exports = {
     ///
     /// If not defined, all issues are considered in scope and updated
     /// accordingly.
+    ///
+    /// All entries in the list can either be a project name (string) or the
+    /// unique project ID (number).
     ///
     redmineProjects: [
       "myproject"
