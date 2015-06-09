@@ -35,7 +35,7 @@ function Redmine(config, cb) {
   this.mergeRequestField = null;
 
   _.bindAll(this,
-    "init", "getUser", "getIssueStatusDescriptor", "queryUser", "checkResponse",
+    "init", "getUser", "getIssueStatusDescriptor", "queryUser",
     "queryMergeRequestField", "queryIssueStatusDescriptors", "queryIssue",
     "updateIssue"
   );
@@ -90,23 +90,6 @@ Redmine.prototype.getIssueStatusDescriptor = function(name) {
 
 
 ///
-/// Check a Redmine response and properly perform an error callback if the
-/// request failed.
-///
-Redmine.prototype.checkResponse = function(err, res, cb) {
-  if(err) {
-    cb(err);
-    return false;
-  } else if(res.statusCode != 200) {
-    cb("http error code: " + res.statusCode.toString());
-    return false;
-  } else {
-    return true;
-  }
-};
-
-
-///
 /// Query Redmine for the Merge Request custom field and cache the result.
 ///
 Redmine.prototype.queryMergeRequestField = function(cb) {
@@ -131,23 +114,21 @@ Redmine.prototype.queryMergeRequestField = function(cb) {
       return;
     }
 
-    if(self.checkResponse(err, res, cb)) {
-      // Got a valid response
-      for(var i in body.custom_fields) {
-        var field = body.custom_fields[i];
-        if(field.name.toLowerCase() == "merge request") {
-          // Found the Merge Request custom field
-          logger.debug("merge request field found: %s [%d]", field.name, field.id);
-          self.mergeRequestField = field;
-          break;
-        }
+    // Got a valid response
+    for(var i in body.custom_fields) {
+      var field = body.custom_fields[i];
+      if(field.name.toLowerCase() == "merge request") {
+        // Found the Merge Request custom field
+        logger.debug("merge request field found: %s [%d]", field.name, field.id);
+        self.mergeRequestField = field;
+        break;
       }
+    }
 
-      if(!self.mergeRequestField) {
-        cb(new Error("merge request field not found"));
-      } else {
-        cb(null, self.mergeRequestField);
-      }
+    if(!self.mergeRequestField) {
+      cb(new Error("merge request field not found"));
+    } else {
+      cb(null, self.mergeRequestField);
     }
   });
 };
@@ -335,7 +316,7 @@ Redmine.prototype.updateIssue = function(id, body, impersonate, cb) {
     req.headers = {
       "X-Redmine-Switch-User": impersonate
     };
-    logger.debug("impersonating user: %s", impersonate);
+    logger.debug("issue #%s: impersonating user: %s", id, impersonate);
   }
 
   this.request(req, function(err, res, body) {
