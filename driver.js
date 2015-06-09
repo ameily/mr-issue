@@ -1,11 +1,18 @@
+///
+/// @copyright 2015 Adam Meily <meily.adam@gmail.com>
+///
+
 
 var Redmine = require('./redmine');
 var _ = require('underscore');
 var async = require('async');
 var util = require('util');
-//var logger = require('./logger');
+var logger = require('./logger');
 
 
+///
+/// Perform async.mapSeries, ignoring errors...
+///
 function asyncMapIgnoreErrors(arr, iterator, callback) {
   var it = function(item, cb) {
     iterator(item, function(err, result) {
@@ -16,19 +23,22 @@ function asyncMapIgnoreErrors(arr, iterator, callback) {
   async.mapSeries(arr, it, callback);
 }
 
+
 ///
 /// Logic driver for Mr. Issue. Receives Gitlab merge request webhooks and then
 /// updates the corresponding issue(s) in Redmine.
 ///
 function MrIssueDriver(config, cb) {
   this.config = config;
-  //this.closeIssueRegExp = /closes\s+#(\d+)\b/gi;
+  logger.info("initializing mr-issue");
+
   this.redmine = new Redmine(config, function(err) {
     if(err) {
-      cb("Failed to initialize Redmine interface: " + err);
+      cb(err);
       return;
     }
 
+    logger.info("initialized mr-issue");
     cb(null);
   });
 }
@@ -51,8 +61,6 @@ MrIssueDriver.prototype.parseClosedIssues = function(mergeRequest, cb) {
 
   issueIds = _.uniq(issueIds);
 
-  console.log("Issues: " + util.inspect(issueIds));
-
   if(issueIds.length > 0) {
     // Retrieve the issue bodies from Redmine
     asyncMapIgnoreErrors(issueIds, self.redmine.queryIssue, cb);
@@ -67,10 +75,10 @@ MrIssueDriver.prototype.processIssue = function(data, cb) {
   var body = {};
   var actions = data.project.actions[data.action];
 
-  if(actions.assignee_id) {
-    body.assigned_to_id = actions.assignee_id;
-  } else if(actions.assignee) {
-    body.assigned_to_id = this.redmine.getUser(actions.assignee).id;
+  if(actions.assigned_to_id) {
+    body.assigned_to_id = actions.assigned_to_id;
+  } else if(actions.assignedTo) {
+    body.assigned_to_id = this.redmine.getUser(actions.assignedTo).id;
   }
 
   if(actions.status_id) {
@@ -88,13 +96,11 @@ MrIssueDriver.prototype.processIssue = function(data, cb) {
     body.notes = "Merge request accepted."
   }
 
-  if(data.project.redmineProjects.indexOf(data.issue.project.id) < 0) {
-    console.log("Error: issue does not belong to project: #" + data.issue.id);
+  if(data.project.redmineProjects && data.project.redmineProjects.indexOf(data.issue.project.id) < 0) {
+    logger.error("issue #%s is out of project scope", data.issue.id);
+    cb(null);
     return;
   }
-
-  console.log("Updating issue #" + data.issue.id);
-  console.log(util.inspect(body));
 
   this.redmine.updateIssue(data.issue.id, body, data.user.username, cb);
 };
