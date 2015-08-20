@@ -24,5 +24,8 @@
     "underscore": "^1.8.2",
     "winston": "^1.0.0",
     "yamljs": "^0.2.1"
-  }
+  },
+  "keywords": [
+    "gitlab", "redmine", "webhook", "merge request", "issue"
+  ]
 }
