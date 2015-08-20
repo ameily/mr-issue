@@ -1,61 +1,76 @@
 # mr-issue
-Mr. Issue - Gitlab Merge Request to Redmine Issue Updates
 
-## Open Merge Request Body
+> What's all this churning and bubbling? You call this is a radar screen?
+>
+> No sir, we call it "Mr. Issue".
 
-```json
-{
-  "object_kind": "merge_request",
-  "user": {
-    "name": "Administrator",
-    "username": "root",
-    "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=40\u0026d=identicon"
-  },
-  "object_attributes": {
-    "id": 99,
-    "target_branch": "master",
-    "source_branch": "ms-viewport",
-    "source_project_id": 14,
-    "author_id": 51,
-    "assignee_id": 6,
-    "title": "MS-Viewport",
-    "created_at": "2013-12-03T17:23:34Z",
-    "updated_at": "2013-12-03T17:23:34Z",
-    "st_commits": null,
-    "st_diffs": null,
-    "milestone_id": null,
-    "state": "opened",
-    "merge_status": "unchecked",
-    "target_project_id": 14,
-    "iid": 1,
-    "description": "",
-    "source": {
-      "name": "awesome_project",
-      "ssh_url": "ssh://git@example.com/awesome_space/awesome_project.git",
-      "http_url": "http://example.com/awesome_space/awesome_project.git",
-      "visibility_level": 20,
-      "namespace": "awesome_space"
-    },
-    "target": {
-      "name": "awesome_project",
-      "ssh_url": "ssh://git@example.com/awesome_space/awesome_project.git",
-      "http_url": "http://example.com/awesome_space/awesome_project.git",
-      "visibility_level": 20,
-      "namespace": "awesome_space"
-    },
-    "last_commit": {
-      "id": "da1560886d4f094c3e6c9ef40349f7d38b5d27d7",
-      "message": "fixed readme",
-      "timestamp": "2012-01-03T23:36:29+02:00",
-      "url": "http://example.com/awesome_space/awesome_project/commits/da1560886d4f094c3e6c9ef40349f7d38b5d27d7",
-      "author": {
-        "name": "GitLab dev user",
-        "email": "gitlabdev@dv6700.(none)"
-      }
-    },
-    "url": "http://example.com/diaspora/merge_requests/1",
-    "action": "open"
-  }
-}
+
+Redmine issues and version tracking are far superior to Gitlab; however, Gitlab
+git integration and Merge Requests for code reviews are far superior to Redmine.
+But, keeping issues and Merge Requests in sync is a nightmare. Until now...
+
+Introducing mr-issue, a Gitlab webhook listener that is able to find issues
+referenced in the body of Merge Requests and then update the issue in Redmine.
+mr-issue can update the corresponding Redmine issue's attributes.
+
+## Tutorial
+
+ * **Configure mr-issue**
+   * mr-issue has a single configuration file that is straightforward. There is
+     an example config at `conf/app-config.exmple.js`.
+ * **Install dependencies**
+   * You'll need NodeJS. I've only tested on Node 0.10, but other versions
+     should work. If you're new to NodeJS or using Ubuntu, I've found
+     [nvm](https://github.com/creationix/nvm) invaluable.
 ```
+nvm install 0.10
+nvm use 0.10
+npm install
+```
+ * **Launch mr-issue**
+   * `node app.js`
+ * **Reference issue in Merge Requests body.**
+  * If a Merge Request will close an issue, simply write `closes #<issue num>`.
+    Closing issues #666? Write `closes #666` somewhere in the Merge Request
+    body. Yes, it's that easy.
+  * Multiple issues can be referenced in a MR: `closes #123 closes #124 closes #456`
+ * ????
+ * Profit!
 
+## Available Actions
+
+ * **Assigned To**: assign the issue to a user by either specifying a user ID
+   or a user login name.
+ * **Status**: set the issue status to either a status ID or a status name.
+ * **Merge Request Field**: it's helpful to bind an issue to the Merge
+   Request link. So, add a new issue custom field named "Merge Request" and
+   mr-issue will automatically update the issue field to the URL of the Merge
+   Request.
+ * **Comment**: post a comment to the issue.
+
+## Merge Request Events
+
+mr-issue can update the issue differently depending on the Merge Request
+webhook that is fired, whether the MR was just opened or merged. Typical issue
+workflow is:
+
+ * MR Opened: assign the issue to the quality assurance or testing lead, post a
+   comment ("Merge Request submitted") and change the issue status _Feedback_.
+ * MR Merged: post a comment ("Merge Request accepted") and set the issue
+   status to _Closed_.
+
+## Configuration
+
+The `conf/app-config.js` file is used to configure mr-issue. The example
+configuration file `conf/app-config.example.js` has several examples. The
+highlights are:
+
+ * Per-project configuration for both Redmine and Gitlab.
+ * Global configuration for all projects.
+ * Impersonate the issue update as the user who created and/or merged the Merge
+   Request.
+
+## License
+
+mr-issue is licensed under the BSD ISC license. Do just about anything, but
+please submit bug reports and/or pull requests on Github.
