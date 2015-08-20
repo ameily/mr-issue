@@ -1,6 +1,6 @@
 {
   "name": "mr-issue",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Gitlab webhook listener to update Redmine Issues based on Merge Request activity",
   "main": "app.js",
   "scripts": {
