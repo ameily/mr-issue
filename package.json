@@ -1,7 +1,7 @@
 {
   "name": "mr-issue",
   "version": "1.0.0",
-  "description": "Gitlab Merge Request to Redmine Issue Hooks",
+  "description": "Gitlab webhook listener to update Redmine Issues based on Merge Request activity",
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -11,7 +11,7 @@
     "url": "https://github.com/ameily/mr-issue"
   },
   "author": "Adam Meily",
-  "license": "BSD",
+  "license": "BSD ISC",
   "bugs": {
     "url": "https://github.com/ameily/mr-issue/issues"
   },
