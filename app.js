@@ -45,5 +45,5 @@ var driver = new MrIssueDriver(config, function(err) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end('{"ok": true}');
     });
-  }).listen(8080, "0.0.0.0");
+  }).listen(config.port, "0.0.0.0");
 });

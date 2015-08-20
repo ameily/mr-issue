@@ -4,10 +4,15 @@
 
 ///
 /// This is the configuration file for the mr-issue instance. Update it
-/// according to the current setup and copy it to app-config.js.
+/// according to the current setup and copy it to conf/app-config.js.
 ///
 
 module.exports = {
+
+  ///
+  /// Port to listen on.
+  ///
+  port: 8080,
 
   ///
   /// Redmine configuration
@@ -26,12 +31,17 @@ module.exports = {
 
     ///
     /// Whether to impersonate the user performing the GItlab operation or not.
+    /// Set this to `true` if both Gitlab and Redmine share the same login user
+    /// names.
     ///
     impersonate: true,
 
     ///
     /// (optional) SSL Certificate Authority file path to use when verifying the
-    /// Redmine server's identity.
+    /// Redmine server's identity. If Redmine is using SSL and a self-signed
+    /// certificate or is using a local certificate authority, this config
+    /// option needs to be set. Otherwise, if it isn't set, requests to Redmine
+    /// to update issues will fail.
     ///
     //sslCaFile: "/path/to/ssl/ca.crt"
   },
@@ -80,14 +90,14 @@ module.exports = {
   projects: [{
     ///
     /// The name of the project. This will match the endpoint of the webhook.
-    /// For example, if the name is "my-project", the webhook will need to
-    /// reference http://<mr-server>:<port>/my-project.
+    /// For example, if the name is "my-project", the webhook will need send
+    /// the request to the url http://<mr-server>:<port>/my-project.
     ///
     name: "my-project",
 
     ///
     /// List of Redmine project names or IDs to filter on. When an issue is
-    ///referenced in a Merge Request description, the issue is queried to
+    /// referenced in a Merge Request description, the issue is queried to
     /// determine if it is within the correct Redmine project. If the issue
     /// isn't within the corresponding Redmine project, the issue isn't
     /// modified. This is to protect issue reference typos and disable

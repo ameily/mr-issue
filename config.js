@@ -16,6 +16,7 @@ var util = require('util');
 function MrIssueConfig(data) {
   var self = this;
 
+  this.port = data.port || 8080;
   this.redmine = data.redmine;
   this.projects = [];
 
